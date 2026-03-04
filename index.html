@@ -746,12 +746,6 @@
     transition: background 0.2s;
   }
   .mobile-nav a:hover { background: var(--lavender-light); }
-
-  img {
-  width: 100%;
-  height: auto;
-  border-radius: 12px;
-}
 </style>
 </head>
 <body>
@@ -765,9 +759,7 @@
 <!-- HEADER -->
 <header id="mainHeader">
   <div class="logo-wrap" onclick="scrollToSection('hero')">
-    <div class="logo-icon">
-      <img src="img/logo.jpeg" alt="">
-    </div>
+    <div class="logo-icon">🌙</div>
     <div>
       <span class="logo-name">BEAUTYLAU</span>
       <span class="logo-sub">COSMÉTICOS</span>
@@ -886,7 +878,7 @@
   <div class="footer-grid">
     <div class="footer-brand">
       <div class="logo-wrap">
-        <div class="logo-icon" style="background:rgba(255,255,255,0.1);"><img src="img/logo.jpeg" alt=""></div>
+        <div class="logo-icon" style="background:rgba(255,255,255,0.1);">🌙</div>
         <div>
           <span class="logo-name">BEAUTYLAU</span>
           <span class="logo-sub">COSMÉTICOS</span>
@@ -1140,123 +1132,67 @@ function doGet(e) {
   const action = e.parameter.action;
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
+  // ── LEER ──────────────────────────────────
   if (action === 'getProducts') {
     const sheet = ss.getSheetByName('Productos') || ss.insertSheet('Productos');
-    if (sheet.getLastRow() < 1) { // If sheet is empty
-        return ContentService.createTextOutput(JSON.stringify({success:true, data:[]})).setMimeType(ContentService.MimeType.JSON);
-    }
     const data = sheet.getDataRange().getValues();
-    const headers = data[0];
-    const products = data.slice(1).map(row => {
-      let obj = {};
-      headers.forEach((h, i) => obj[h] = row[i]);
-      // Ensure price is a number
-      obj.price = Number(obj.price) || 0;
-      return obj;
-    });
-    return ContentService
-      .createTextOutput(JSON.stringify({success:true, data:products}))
-      .setMimeType(ContentService.MimeType.JSON);
+    if (data.length <= 1) return ok([]);
+    const h = data[0];
+    return ok(data.slice(1).map(r => Object.fromEntries(h.map((k,i)=>[k,r[i]]))));
   }
 
   if (action === 'getCategories') {
     const sheet = ss.getSheetByName('Categorias') || ss.insertSheet('Categorias');
-    if (sheet.getLastRow() < 1) { // If sheet is empty
-        return ContentService.createTextOutput(JSON.stringify({success:true, data:[]})).setMimeType(ContentService.MimeType.JSON);
-    }
     const data = sheet.getDataRange().getValues();
-    const headers = data[0];
-    const cats = data.slice(1).map(row => {
-      let obj = {};
-      headers.forEach((h, i) => obj[h] = row[i]);
-      return obj;
-    });
-    return ContentService
-      .createTextOutput(JSON.stringify({success:true, data:cats}))
-      .setMimeType(ContentService.MimeType.JSON);
+    if (data.length <= 1) return ok([]);
+    const h = data[0];
+    return ok(data.slice(1).map(r => Object.fromEntries(h.map((k,i)=>[k,r[i]]))));
   }
 
   if (action === 'getConfig') {
     const sheet = ss.getSheetByName('Config') || ss.insertSheet('Config');
-    if (sheet.getLastRow() < 1) { // If sheet is empty
-        const defaultConfig = {"whatsapp":"573001234567","name":"BeautyLau","pass":"admin123","scriptUrl":""};
-        return ContentService.createTextOutput(JSON.stringify({success:true, data:defaultConfig})).setMimeType(ContentService.MimeType.JSON);
-    }
     const data = sheet.getDataRange().getValues();
-    const config = data.reduce((obj, row) => {
-      if(row[0]) obj[row[0]] = row[1];
-      return obj;
-    }, {});
-    return ContentService
-      .createTextOutput(JSON.stringify({success:true, data:config}))
-      .setMimeType(ContentService.MimeType.JSON);
+    if (data.length <= 1) return okData({});
+    const h = data[0];
+    const row = data[1];
+    return okData(Object.fromEntries(h.map((k,i)=>[k,row[i]])));
   }
 
-  return ContentService
-    .createTextOutput(JSON.stringify({error:'Acción no válida'}))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-function doPost(e) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let body;
-  try {
-    body = JSON.parse(e.postData.contents);
-  } catch (err) {
-    return ContentService
-      .createTextOutput(JSON.stringify({error:'Invalid JSON body', details: e.postData.contents}))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-  const action = body.action;
-
+  // ── GUARDAR ───────────────────────────────
   if (action === 'saveProducts') {
-    let sheet = ss.getSheetByName('Productos') || ss.insertSheet('Productos');
+    const items = JSON.parse(decodeURIComponent(e.parameter.data));
+    const sheet = ss.getSheetByName('Productos') || ss.insertSheet('Productos');
     sheet.clearContents();
-    const headers = ['id','name','price','category','description','image','badge'];
-    sheet.appendRow(headers);
-    if (body.products && Array.isArray(body.products)) {
-        body.products.forEach(p => {
-          sheet.appendRow([p.id||'',p.name||'',p.price||0,p.category||'',p.description||'',p.image||'',p.badge||'']);
-        });
-    }
-    return ContentService
-      .createTextOutput(JSON.stringify({success:true, message: 'Products saved'}))
-      .setMimeType(ContentService.MimeType.JSON);
+    sheet.appendRow(['id','name','price','category','description','image','badge']);
+    items.forEach(p => sheet.appendRow([p.id||'',p.name||'',p.price||0,p.category||'',p.description||'',p.image||'',p.badge||'']));
+    return ok([]);
   }
 
   if (action === 'saveCategories') {
-    let sheet = ss.getSheetByName('Categorias') || ss.insertSheet('Categorias');
+    const items = JSON.parse(decodeURIComponent(e.parameter.data));
+    const sheet = ss.getSheetByName('Categorias') || ss.insertSheet('Categorias');
     sheet.clearContents();
-    const headers = ['id','name','emoji'];
-    sheet.appendRow(headers);
-    if (body.categories && Array.isArray(body.categories)) {
-        body.categories.forEach(c => {
-          sheet.appendRow([c.id||'',c.name||'',c.emoji||'']);
-        });
-    }
-    return ContentService
-      .createTextOutput(JSON.stringify({success:true, message: 'Categories saved'}))
-      .setMimeType(ContentService.MimeType.JSON);
+    sheet.appendRow(['id','name','emoji']);
+    items.forEach(c => sheet.appendRow([c.id||'',c.name||'',c.emoji||'']));
+    return ok([]);
   }
 
   if (action === 'saveConfig') {
-    let sheet = ss.getSheetByName('Config') || ss.insertSheet('Config');
+    const cfg = JSON.parse(decodeURIComponent(e.parameter.data));
+    const sheet = ss.getSheetByName('Config') || ss.insertSheet('Config');
     sheet.clearContents();
-    const configData = body.config;
-    if (configData) {
-        Object.keys(configData).forEach(key => {
-            sheet.appendRow([key, configData[key]]);
-        });
-    }
-    return ContentService
-      .createTextOutput(JSON.stringify({success:true, message: 'Config saved'}))
-      .setMimeType(ContentService.MimeType.JSON);
+    const keys = Object.keys(cfg);
+    sheet.appendRow(keys);
+    sheet.appendRow(keys.map(k => cfg[k]||''));
+    return okData(cfg);
   }
 
-  return ContentService
-    .createTextOutput(JSON.stringify({error:'Acción no válida en POST'}))
+  return ContentService.createTextOutput(JSON.stringify({error:'acción no válida'}))
     .setMimeType(ContentService.MimeType.JSON);
 }
+
+function ok(data)     { return ContentService.createTextOutput(JSON.stringify({success:true,data})).setMimeType(ContentService.MimeType.JSON); }
+function okData(data) { return ContentService.createTextOutput(JSON.stringify({success:true,data})).setMimeType(ContentService.MimeType.JSON); }
           </pre>
         </div>
         <div class="config-row">
@@ -1279,43 +1215,101 @@ function doPost(e) {
 
 <script>
 // ═══════════════════════════════════════════
-// ESTADO DE LA APLICACIÓN
+// ESTADO — localStorage como caché, Sheets como fuente real
 // ═══════════════════════════════════════════
-let products = JSON.parse(localStorage.getItem('bl_products') || '[]');
+let products   = JSON.parse(localStorage.getItem('bl_products')   || '[]');
 let categories = JSON.parse(localStorage.getItem('bl_categories') || '[]');
-let cart = JSON.parse(localStorage.getItem('bl_cart') || '[]');
-let config = JSON.parse(localStorage.getItem('bl_config') || '{"whatsapp":"573001234567","name":"BeautyLau","pass":"admin123","scriptUrl":""}');
+let cart       = JSON.parse(localStorage.getItem('bl_cart')       || '[]');
+let config     = JSON.parse(localStorage.getItem('bl_config')     || '{"whatsapp":"","name":"BeautyLau","pass":"admin123","scriptUrl":""}');
 let activeCategory = 'all';
 let currentProduct = null;
 let modalQty = 1;
 
-// Datos iniciales de muestra
-if (categories.length === 0) {
-  categories = [
-    { id: 'c1', name: 'Labiales', emoji: '💄' },
-    { id: 'c2', name: 'Bases', emoji: '✨' },
-    { id: 'c3', name: 'Sombras', emoji: '👁️' },
-    { id: 'c4', name: 'Skincare', emoji: '🌸' },
-    { id: 'c5', name: 'Perfumes', emoji: '🌹' },
-  ];
-  saveCategories();
-}
-if (products.length === 0) {
-  products = [
-    { id: 'p1', name: 'Labial Nude Matte', price: 28000, category: 'c1', description: 'Labial de larga duración con acabado mate suave. Tonos nude perfectos para el día a día.', image: 'https://images.unsplash.com/photo-1586495777744-4e6232bf2177?w=400&q=80', badge: 'Popular' },
-    { id: 'p2', name: 'Base Cobertura Total', price: 65000, category: 'c2', description: 'Base de maquillaje con cobertura total y acabado luminoso. Dura hasta 24 horas.', image: 'https://images.unsplash.com/photo-1631214524020-3c69f7afb39d?w=400&q=80', badge: 'Nuevo' },
-    { id: 'p3', name: 'Paleta Sombras Luna', price: 85000, category: 'c3', description: 'Paleta de 12 sombras inspirada en la luna. Tonos que van desde el nude hasta el ahumado.', image: 'https://images.unsplash.com/photo-1512496015851-a90fb38ba796?w=400&q=80', badge: '' },
-    { id: 'p4', name: 'Sérum Vitamina C', price: 95000, category: 'c4', description: 'Sérum hidratante con vitamina C que ilumina y unifica el tono de la piel.', image: 'https://images.unsplash.com/photo-1556228578-8c89e6adf883?w=400&q=80', badge: 'Oferta' },
-    { id: 'p5', name: 'Perfume Floral', price: 120000, category: 'c5', description: 'Fragancia floral con notas de rosa, jazmín y vainilla. Elegante y duradera.', image: 'https://images.unsplash.com/photo-1541643600914-78b084683702?w=400&q=80', badge: '' },
-    { id: 'p6', name: 'Iluminador Dorado', price: 45000, category: 'c2', description: 'Iluminador en polvo con partículas doradas que aportan luminosidad natural al rostro.', image: 'https://images.unsplash.com/photo-1583241800698-e8ab01830a5e?w=400&q=80', badge: 'Nuevo' },
-  ];
-  saveProducts();
+// ── Helpers de caché local ──
+function cacheProducts()    { localStorage.setItem('bl_products',    JSON.stringify(products)); }
+function cacheCategories()  { localStorage.setItem('bl_categories',  JSON.stringify(categories)); }
+function saveCart()         { localStorage.setItem('bl_cart',        JSON.stringify(cart)); }
+function cacheConfig()      { localStorage.setItem('bl_config',      JSON.stringify(config)); }
+
+// ── URL del script ──
+function scriptUrl() { return (config.scriptUrl || '').trim(); }
+
+// ── Llamada GET al Apps Script (sin CORS) ──
+async function sheetGET(params) {
+  const url = scriptUrl();
+  if (!url) return null;
+  const qs = Object.entries(params).map(([k,v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+  try {
+    const r = await fetch(`${url}?${qs}`);
+    return await r.json();
+  } catch(e) { return null; }
 }
 
-function saveProducts() { localStorage.setItem('bl_products', JSON.stringify(products)); }
-function saveCategories() { localStorage.setItem('bl_categories', JSON.stringify(categories)); }
-function saveCart() { localStorage.setItem('bl_cart', JSON.stringify(cart)); }
-function saveConfig() { localStorage.setItem('bl_config', JSON.stringify(config)); }
+// ── Persistir productos en Sheets ──
+async function persistProducts() {
+  cacheProducts();
+  await sheetGET({ action: 'saveProducts', data: JSON.stringify(products) });
+}
+
+// ── Persistir categorías en Sheets ──
+async function persistCategories() {
+  cacheCategories();
+  await sheetGET({ action: 'saveCategories', data: JSON.stringify(categories) });
+}
+
+// ── Persistir config en Sheets ──
+async function persistConfig() {
+  cacheConfig();
+  await sheetGET({ action: 'saveConfig', data: JSON.stringify(config) });
+}
+
+// ── Cargar todo desde Sheets al iniciar ──
+async function loadFromSheets() {
+  const url = scriptUrl();
+  if (!url) return false;
+  try {
+    const [rC, rP, rCfg] = await Promise.all([
+      sheetGET({ action: 'getCategories' }),
+      sheetGET({ action: 'getProducts' }),
+      sheetGET({ action: 'getConfig' })
+    ]);
+    let changed = false;
+    if (rC?.success && rC.data?.length)   { categories = rC.data;   cacheCategories(); changed = true; }
+    if (rP?.success && rP.data?.length)   { products   = rP.data;   cacheProducts();   changed = true; }
+    if (rCfg?.success && rCfg.data) {
+      // conservar scriptUrl del localStorage para no perderla
+      const savedUrl = config.scriptUrl;
+      config = { ...config, ...rCfg.data, scriptUrl: savedUrl };
+      cacheConfig();
+    }
+    return changed;
+  } catch(e) { return false; }
+}
+
+// ── Datos de muestra si Sheets vacío y caché vacío ──
+function loadSampleData() {
+  if (categories.length === 0) {
+    categories = [
+      { id: 'c1', name: 'Labiales',  emoji: '💄' },
+      { id: 'c2', name: 'Bases',     emoji: '✨' },
+      { id: 'c3', name: 'Sombras',   emoji: '👁️' },
+      { id: 'c4', name: 'Skincare',  emoji: '🌸' },
+      { id: 'c5', name: 'Perfumes',  emoji: '🌹' },
+    ];
+    cacheCategories();
+  }
+  if (products.length === 0) {
+    products = [
+      { id:'p1', name:'Labial Nude Matte',    price:28000,  category:'c1', description:'Labial de larga duración con acabado mate suave. Tonos nude perfectos para el día a día.',                         image:'https://images.unsplash.com/photo-1586495777744-4e6232bf2177?w=400&q=80', badge:'Popular' },
+      { id:'p2', name:'Base Cobertura Total', price:65000,  category:'c2', description:'Base de maquillaje con cobertura total y acabado luminoso. Dura hasta 24 horas.',                                  image:'https://images.unsplash.com/photo-1631214524020-3c69f7afb39d?w=400&q=80', badge:'Nuevo'   },
+      { id:'p3', name:'Paleta Sombras Luna',  price:85000,  category:'c3', description:'Paleta de 12 sombras inspirada en la luna. Tonos que van desde el nude hasta el ahumado.',                        image:'https://images.unsplash.com/photo-1512496015851-a90fb38ba796?w=400&q=80', badge:''        },
+      { id:'p4', name:'Sérum Vitamina C',     price:95000,  category:'c4', description:'Sérum hidratante con vitamina C que ilumina y unifica el tono de la piel.',                                       image:'https://images.unsplash.com/photo-1556228578-8c89e6adf883?w=400&q=80', badge:'Oferta'   },
+      { id:'p5', name:'Perfume Floral',       price:120000, category:'c5', description:'Fragancia floral con notas de rosa, jazmín y vainilla. Elegante y duradera.',                                     image:'https://images.unsplash.com/photo-1541643600914-78b084683702?w=400&q=80', badge:''        },
+      { id:'p6', name:'Iluminador Dorado',    price:45000,  category:'c2', description:'Iluminador en polvo con partículas doradas que aportan luminosidad natural al rostro.',                           image:'https://images.unsplash.com/photo-1583241800698-e8ab01830a5e?w=400&q=80', badge:'Nuevo'   },
+    ];
+    cacheProducts();
+  }
+}
 
 // ═══════════════════════════════════════════
 // INIT
@@ -1323,22 +1317,26 @@ function saveConfig() { localStorage.setItem('bl_config', JSON.stringify(config)
 window.addEventListener('load', async () => {
   document.body.style.overflow = 'hidden';
 
-  // If a script URL is configured, try to fetch the latest data from Sheets.
-  if (config.scriptUrl) {
-    await syncFromSheets(true);
-  } else {
-    // If no script, just render from localStorage/defaults
+  // 1. Mostrar caché inmediatamente
+  loadSampleData();
+  renderCategories();
+  renderProducts();
+  updateCart();
+  updateStats();
+
+  // 2. Sincronizar desde Sheets en segundo plano
+  const synced = await loadFromSheets();
+  if (synced) {
     renderCategories();
     renderProducts();
     updateStats();
   }
-  updateCart(); // Always update cart from localStorage
 
-  // Hide loader
+  // 3. Ocultar loader
   setTimeout(() => {
     document.getElementById('loader').classList.add('hidden');
     document.body.style.overflow = '';
-  }, 500);
+  }, 1600);
 
   window.addEventListener('scroll', () => {
     document.getElementById('mainHeader').classList.toggle('scrolled', window.scrollY > 20);
@@ -1653,31 +1651,6 @@ function showAdminTab(tab) {
   document.getElementById('admin' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
 }
 
-async function syncToSheets(type) {
-    const url = config.scriptUrl;
-    if (!url) {
-        console.log("No se configuró la URL del script, guardando solo localmente.");
-        throw new Error("No script URL");
-    }
-
-    let payload;
-    if (type === 'products') {
-        payload = { action: 'saveProducts', products: products };
-    } else if (type === 'categories') {
-        payload = { action: 'saveCategories', categories: categories };
-    } else {
-        return;
-    }
-
-    const res = await fetch(url, { method: 'POST', body: JSON.stringify(payload) });
-    if (!res.ok) {
-        throw new Error(`Error al sincronizar ${type}`); });
-    if (!res.ok) {
-        throw new Error(`Error al sincronizar ${type}`);
-    }
-    console.log(`${type} sincronizado con Google Sheets.`);
-}
-
 // Admin - Products
 function renderAdminProducts() {
   const tbody = document.getElementById('adminProductsBody');
@@ -1699,34 +1672,27 @@ function renderAdminProducts() {
 }
 
 async function saveProduct() {
-  const name = document.getElementById('pName').value.trim();
+  const name  = document.getElementById('pName').value.trim();
   const price = parseFloat(document.getElementById('pPrice').value);
-  const cat = document.getElementById('pCat').value;
-  const img = document.getElementById('pImg').value.trim();
-  const desc = document.getElementById('pDesc').value.trim();
+  const cat   = document.getElementById('pCat').value;
+  const img   = document.getElementById('pImg').value.trim();
+  const desc  = document.getElementById('pDesc').value.trim();
   const badge = document.getElementById('pBadge').value.trim();
   const editId = document.getElementById('pId').value;
   if (!name || !price || !cat) { showToast('Nombre, precio y categoría son obligatorios'); return; }
-
   if (editId) {
     const p = products.find(x => x.id === editId);
-    if (p) { p.name = name; p.price = price; p.category = cat; p.image = img; p.description = desc; p.badge = badge; }
+    if (p) { p.name=name; p.price=price; p.category=cat; p.image=img; p.description=desc; p.badge=badge; }
   } else {
-    products.push({ id: 'p' + Date.now(), name, price, category: cat, image: img, description: desc, badge });
+    products.push({ id:'p'+Date.now(), name, price, category:cat, image:img, description:desc, badge });
   }
-
-  saveProducts();
+  showToast('Guardando...⏳');
+  await persistProducts();
   renderProducts();
   renderAdminProducts();
   updateStats();
   clearProductForm();
-  showToast('Guardando producto...');
-  try {
-    await syncToSheets('products');
-    showToast('Producto guardado y sincronizado ✓', 'success');
-  } catch (e) {
-    showToast('Producto guardado localmente, pero falló la sincronización.');
-  }
+  showToast('Producto guardado ✓', 'success');
 }
 
 function editProduct(id) {
@@ -1747,17 +1713,12 @@ function editProduct(id) {
 async function deleteProduct(id) {
   if (!confirm('¿Eliminar este producto?')) return;
   products = products.filter(p => p.id !== id);
-  saveProducts();
+  showToast('Eliminando...⏳');
+  await persistProducts();
   renderProducts();
   renderAdminProducts();
   updateStats();
-  showToast('Eliminando producto...');
-  try {
-    await syncToSheets('products');
-    showToast('Producto eliminado y sincronizado ✓', 'success');
-  } catch (e) {
-    showToast('Producto eliminado localmente, pero falló la sincronización.');
-  }
+  showToast('Producto eliminado');
 }
 
 function clearProductForm() {
@@ -1791,19 +1752,18 @@ function renderAdminCategories() {
 }
 
 async function saveCategory() {
-  const name = document.getElementById('catName').value.trim();
+  const name  = document.getElementById('catName').value.trim();
   const emoji = document.getElementById('catEmoji').value.trim() || '💜';
   const editId = document.getElementById('catId').value;
   if (!name) { showToast('El nombre es obligatorio'); return; }
-
   if (editId) {
     const c = categories.find(x => x.id === editId);
     if (c) { c.name = name; c.emoji = emoji; }
   } else {
     categories.push({ id: 'c' + Date.now(), name, emoji });
   }
-
-  saveCategories();
+  showToast('Guardando...⏳');
+  await persistCategories();
   renderCategories();
   renderAdminCategories();
   renderAdminProducts();
@@ -1811,13 +1771,7 @@ async function saveCategory() {
   document.getElementById('catEmoji').value = '';
   document.getElementById('catId').value = '';
   updateStats();
-  showToast('Guardando categoría...');
-  try {
-    await syncToSheets('categories');
-    showToast('Categoría guardada y sincronizada ✓', 'success');
-  } catch (e) {
-    showToast('Categoría guardada localmente, pero falló la sincronización.');
-  }
+  showToast('Categoría guardada ✓', 'success');
 }
 
 function editCategory(id) {
@@ -1831,133 +1785,62 @@ function editCategory(id) {
 async function deleteCategory(id) {
   if (!confirm('¿Eliminar esta categoría? Los productos quedarán sin categoría.')) return;
   categories = categories.filter(c => c.id !== id);
-  saveCategories();
+  showToast('Eliminando...⏳');
+  await persistCategories();
   renderCategories();
   renderAdminCategories();
   updateStats();
-  showToast('Eliminando categoría...');
-  try {
-    await syncToSheets('categories');
-    showToast('Categoría eliminada y sincronizada ✓', 'success');
-  } catch (e) {
-    showToast('Categoría eliminada localmente, pero falló la sincronización.');
-  }
+  showToast('Categoría eliminada');
 }
 
 // Admin - Config
 function fillAdminConfig() {
   document.getElementById('cfgWhatsapp').value = config.whatsapp || '';
-  document.getElementById('cfgName').value = config.name || 'BeautyLau';
-  document.getElementById('cfgHero').value = config.hero || '';
+  document.getElementById('cfgName').value     = config.name    || 'BeautyLau';
+  document.getElementById('cfgHero').value     = config.hero    || '';
 }
 
 async function saveConfig() {
-  config.whatsapp = document.getElementById('cfgWhatsapp').value;
-  config.name = document.getElementById('cfgName').value;
-  config.hero = document.getElementById('cfgHero').value;
-  const newPass = document.getElementById('cfgPass').value;
+  config.whatsapp = document.getElementById('cfgWhatsapp').value.replace(/\s/g,'');
+  config.name     = document.getElementById('cfgName').value;
+  config.hero     = document.getElementById('cfgHero').value;
+  const newPass  = document.getElementById('cfgPass').value;
   const newPass2 = document.getElementById('cfgPass2').value;
-
   if (newPass) {
     if (newPass !== newPass2) { showToast('Las contraseñas no coinciden'); return; }
     config.pass = newPass;
   }
-
-  // Save to localStorage immediately
-  localStorage.setItem('bl_config', JSON.stringify(config));
-  showToast('Guardando configuración...');
-
-  try {
-    const url = config.scriptUrl;
-    if (!url) { showToast('Configuración guardada localmente. Agrega la URL del script para guardado permanente.'); return; }
-    await fetch(url, { method: 'POST', body: JSON.stringify({ action: 'saveConfig', config: config }) });
-    showToast('Configuración guardada y sincronizada ✓', 'success');
-  } catch (e) {
-    console.error("Error al guardar config:", e);
-    showToast('Configuración guardada localmente, pero falló la sincronización.');
-  }
+  showToast('Guardando...⏳');
+  await persistConfig();
+  showToast('Configuración guardada ✓', 'success');
 }
 
 // Admin - Sheets
 async function saveScriptUrl() {
-  const newUrl = document.getElementById('cfgScriptUrl').value.trim();
-  config.scriptUrl = newUrl;
-  localStorage.setItem('bl_config', JSON.stringify(config));
-  
-  if (!newUrl) {
-    showToast('URL eliminada del almacenamiento local.');
-    return;
-  }
+  config.scriptUrl = document.getElementById('cfgScriptUrl').value.trim();
+  cacheConfig();
+  showToast('URL guardada ✓', 'success');
+}
 
-  showToast('Guardando URL y sincronizando...');
-  try {
-    await fetch(newUrl, { method: 'POST', body: JSON.stringify({ action: 'saveConfig', config: config }) });
-    showToast('URL guardada y sincronizada ✓', 'success');
-  } catch (e) {
-    console.error("Error al guardar la URL del script:", e);
-    showToast('URL guardada localmente, pero no se pudo sincronizar. Verifica que la URL sea correcta.');
+async function syncFromSheets() {
+  if (!scriptUrl()) { showToast('Primero configura la URL del script'); return; }
+  showToast('Sincronizando...');
+  const synced = await loadFromSheets();
+  if (synced) {
+    renderCategories(); renderProducts(); renderAdminProducts(); renderAdminCategories(); updateStats();
+    showToast('¡Sincronizado desde Sheets! ✓', 'success');
+  } else {
+    showToast('Sin datos nuevos o error de conexión');
   }
 }
 
 async function exportToSheets() {
-  const url = config.scriptUrl;
-  if (!url) { showToast('Primero configura la URL del script'); return; }
+  if (!scriptUrl()) { showToast('Primero configura la URL del script'); return; }
   showToast('Exportando...');
-  try {
-    await Promise.all([
-      fetch(url, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'saveCategories', categories: categories })
-      }),
-      fetch(url, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'saveProducts', products: products })
-      }),
-      fetch(url, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'saveConfig', config: config })
-      })
-    ]);
-    showToast('¡Exportado a Sheets! ✓', 'success');
-  } catch(e) {
-    console.error(e);
-    showToast('Error al exportar');
-  }
-}
-
-async function syncFromSheets(isInitialLoad = false) {
-  const url = config.scriptUrl;
-  if (!url) {
-    if (!isInitialLoad) showToast('Primero configura la URL del script');
-    return;
-  }
-  if (!isInitialLoad) showToast('Sincronizando...');
-  else console.log('Sincronización inicial desde Google Sheets...');
-
-  try {
-    const [resCats, resProds, resConfig] = await Promise.all([
-      fetch(`${url}?action=getCategories`).then(r => r.json()),
-      fetch(`${url}?action=getProducts`).then(r => r.json()),
-      fetch(`${url}?action=getConfig`).then(r => r.json())
-    ]);
-
-    if (resCats.success && resCats.data.length) { categories = resCats.data; saveCategories(); }
-    if (resProds.success && resProds.data.length) { products = resProds.data; saveProducts(); }
-    if (resConfig.success && Object.keys(resConfig.data).length) {
-        const scriptUrl = config.scriptUrl;
-        config = resConfig.data;
-        if (scriptUrl && !config.scriptUrl) { config.scriptUrl = scriptUrl; }
-        localStorage.setItem('bl_config', JSON.stringify(config));
-    }
-
-    renderCategories(); renderProducts(); updateStats();
-    if (!isInitialLoad) { renderAdminProducts(); renderAdminCategories(); fillAdminConfig(); showToast('¡Sincronizado! ✓', 'success'); }
-    else console.log('Sincronización inicial completada.');
-
-  } catch(e) {
-    console.error("Error de sincronización:", e);
-    if (!isInitialLoad) showToast('Error de conexión');
-  }
+  await persistCategories();
+  await persistProducts();
+  await persistConfig();
+  showToast('¡Exportado a Sheets! ✓', 'success');
 }
 </script>
 </body>
