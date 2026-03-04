@@ -1753,31 +1753,29 @@ function saveScriptUrl() {
   showToast('URL guardada ✓', 'success');
 }
 
-async function syncFromSheets() {
-  const url = config.scriptUrl;
-  if (!url) { showToast('Primero configura la URL del script'); return; }
-  showToast('Sincronizando...');
-  try {
-    const [rP, rC] = await Promise.all([
-      fetch(url + '?action=getProducts').then(r => r.json()),
-      fetch(url + '?action=getCategories').then(r => r.json())
-    ]);
-    if (rC.success && rC.data.length) { categories = rC.data; saveCategories(); }
-    if (rP.success && rP.data.length) { products = rP.data; saveProducts(); }
-    renderCategories(); renderProducts(); renderAdminProducts(); renderAdminCategories();
-    showToast('¡Sincronizado desde Sheets! ✓', 'success');
-  } catch(e) { showToast('Error de conexión. Verifica la URL'); }
-}
-
 async function exportToSheets() {
   const url = config.scriptUrl;
   if (!url) { showToast('Primero configura la URL del script'); return; }
   showToast('Exportando...');
   try {
-    await fetch(url, { method: 'POST', body: JSON.stringify({ action: 'saveCategories', categories }), headers: { 'Content-Type': 'application/json' } });
-    await fetch(url, { method: 'POST', body: JSON.stringify({ action: 'saveProducts', products }), headers: { 'Content-Type': 'application/json' } });
+    await fetch(`${url}?action=saveCategories&data=${encodeURIComponent(JSON.stringify(categories))}`);
+    await fetch(`${url}?action=saveProducts&data=${encodeURIComponent(JSON.stringify(products))}`);
     showToast('¡Exportado a Sheets! ✓', 'success');
-  } catch(e) { showToast('Error al exportar. Verifica la URL'); }
+  } catch(e) { showToast('Error al exportar'); }
+}
+
+async function syncFromSheets() {
+  const url = config.scriptUrl;
+  if (!url) { showToast('Primero configura la URL del script'); return; }
+  showToast('Sincronizando...');
+  try {
+    const rC = await fetch(`${url}?action=getCategories`).then(r => r.json());
+    const rP = await fetch(`${url}?action=getProducts`).then(r => r.json());
+    if (rC.success && rC.data.length) { categories = rC.data; saveCategories(); }
+    if (rP.success && rP.data.length) { products = rP.data; saveProducts(); }
+    renderCategories(); renderProducts(); renderAdminProducts(); renderAdminCategories();
+    showToast('¡Sincronizado! ✓', 'success');
+  } catch(e) { showToast('Error de conexión'); }
 }
 </script>
 </body>
