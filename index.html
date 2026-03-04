@@ -1142,11 +1142,16 @@ function doGet(e) {
 
   if (action === 'getProducts') {
     const sheet = ss.getSheetByName('Productos') || ss.insertSheet('Productos');
+    if (sheet.getLastRow() < 1) { // If sheet is empty
+        return ContentService.createTextOutput(JSON.stringify({success:true, data:[]})).setMimeType(ContentService.MimeType.JSON);
+    }
     const data = sheet.getDataRange().getValues();
     const headers = data[0];
     const products = data.slice(1).map(row => {
       let obj = {};
       headers.forEach((h, i) => obj[h] = row[i]);
+      // Ensure price is a number
+      obj.price = Number(obj.price) || 0;
       return obj;
     });
     return ContentService
@@ -1156,6 +1161,9 @@ function doGet(e) {
 
   if (action === 'getCategories') {
     const sheet = ss.getSheetByName('Categorias') || ss.insertSheet('Categorias');
+    if (sheet.getLastRow() < 1) { // If sheet is empty
+        return ContentService.createTextOutput(JSON.stringify({success:true, data:[]})).setMimeType(ContentService.MimeType.JSON);
+    }
     const data = sheet.getDataRange().getValues();
     const headers = data[0];
     const cats = data.slice(1).map(row => {
@@ -1168,6 +1176,22 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (action === 'getConfig') {
+    const sheet = ss.getSheetByName('Config') || ss.insertSheet('Config');
+    if (sheet.getLastRow() < 1) { // If sheet is empty
+        const defaultConfig = {"whatsapp":"573001234567","name":"BeautyLau","pass":"admin123","scriptUrl":""};
+        return ContentService.createTextOutput(JSON.stringify({success:true, data:defaultConfig})).setMimeType(ContentService.MimeType.JSON);
+    }
+    const data = sheet.getDataRange().getValues();
+    const config = data.reduce((obj, row) => {
+      if(row[0]) obj[row[0]] = row[1];
+      return obj;
+    }, {});
+    return ContentService
+      .createTextOutput(JSON.stringify({success:true, data:config}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   return ContentService
     .createTextOutput(JSON.stringify({error:'Acción no válida'}))
     .setMimeType(ContentService.MimeType.JSON);
@@ -1175,7 +1199,14 @@ function doGet(e) {
 
 function doPost(e) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const body = JSON.parse(e.postData.contents);
+  let body;
+  try {
+    body = JSON.parse(e.postData.contents);
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({error:'Invalid JSON body', details: e.postData.contents}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
   const action = body.action;
 
   if (action === 'saveProducts') {
@@ -1183,11 +1214,13 @@ function doPost(e) {
     sheet.clearContents();
     const headers = ['id','name','price','category','description','image','badge'];
     sheet.appendRow(headers);
-    body.products.forEach(p => {
-      sheet.appendRow([p.id||'',p.name||'',p.price||0,p.category||'',p.description||'',p.image||'',p.badge||'']);
-    });
+    if (body.products && Array.isArray(body.products)) {
+        body.products.forEach(p => {
+          sheet.appendRow([p.id||'',p.name||'',p.price||0,p.category||'',p.description||'',p.image||'',p.badge||'']);
+        });
+    }
     return ContentService
-      .createTextOutput(JSON.stringify({success:true}))
+      .createTextOutput(JSON.stringify({success:true, message: 'Products saved'}))
       .setMimeType(ContentService.MimeType.JSON);
   }
 
@@ -1196,16 +1229,32 @@ function doPost(e) {
     sheet.clearContents();
     const headers = ['id','name','emoji'];
     sheet.appendRow(headers);
-    body.categories.forEach(c => {
-      sheet.appendRow([c.id||'',c.name||'',c.emoji||'']);
-    });
+    if (body.categories && Array.isArray(body.categories)) {
+        body.categories.forEach(c => {
+          sheet.appendRow([c.id||'',c.name||'',c.emoji||'']);
+        });
+    }
     return ContentService
-      .createTextOutput(JSON.stringify({success:true}))
+      .createTextOutput(JSON.stringify({success:true, message: 'Categories saved'}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (action === 'saveConfig') {
+    let sheet = ss.getSheetByName('Config') || ss.insertSheet('Config');
+    sheet.clearContents();
+    const configData = body.config;
+    if (configData) {
+        Object.keys(configData).forEach(key => {
+            sheet.appendRow([key, configData[key]]);
+        });
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify({success:true, message: 'Config saved'}))
       .setMimeType(ContentService.MimeType.JSON);
   }
 
   return ContentService
-    .createTextOutput(JSON.stringify({error:'Acción no válida'}))
+    .createTextOutput(JSON.stringify({error:'Acción no válida en POST'}))
     .setMimeType(ContentService.MimeType.JSON);
 }
           </pre>
@@ -1271,16 +1320,25 @@ function saveConfig() { localStorage.setItem('bl_config', JSON.stringify(config)
 // ═══════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════
-window.addEventListener('load', () => {
+window.addEventListener('load', async () => {
+  document.body.style.overflow = 'hidden';
+
+  // If a script URL is configured, try to fetch the latest data from Sheets.
+  if (config.scriptUrl) {
+    await syncFromSheets(true);
+  } else {
+    // If no script, just render from localStorage/defaults
+    renderCategories();
+    renderProducts();
+    updateStats();
+  }
+  updateCart(); // Always update cart from localStorage
+
+  // Hide loader
   setTimeout(() => {
     document.getElementById('loader').classList.add('hidden');
     document.body.style.overflow = '';
-  }, 1800);
-  renderCategories();
-  renderProducts();
-  updateCart();
-  updateStats();
-  document.body.style.overflow = 'hidden';
+  }, 500);
 
   window.addEventListener('scroll', () => {
     document.getElementById('mainHeader').classList.toggle('scrolled', window.scrollY > 20);
@@ -1595,6 +1653,29 @@ function showAdminTab(tab) {
   document.getElementById('admin' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
 }
 
+async function syncToSheets(type) {
+    const url = config.scriptUrl;
+    if (!url) {
+        console.log("No se configuró la URL del script, guardando solo localmente.");
+        throw new Error("No script URL");
+    }
+
+    let payload;
+    if (type === 'products') {
+        payload = { action: 'saveProducts', products: products };
+    } else if (type === 'categories') {
+        payload = { action: 'saveCategories', categories: categories };
+    } else {
+        return;
+    }
+
+    const res = await fetch(url, { method: 'POST', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' }, redirect: 'follow' });
+    if (!res.ok) {
+        throw new Error(`Error al sincronizar ${type}`);
+    }
+    console.log(`${type} sincronizado con Google Sheets.`);
+}
+
 // Admin - Products
 function renderAdminProducts() {
   const tbody = document.getElementById('adminProductsBody');
@@ -1615,7 +1696,7 @@ function renderAdminProducts() {
   }).join('');
 }
 
-function saveProduct() {
+async function saveProduct() {
   const name = document.getElementById('pName').value.trim();
   const price = parseFloat(document.getElementById('pPrice').value);
   const cat = document.getElementById('pCat').value;
@@ -1624,18 +1705,26 @@ function saveProduct() {
   const badge = document.getElementById('pBadge').value.trim();
   const editId = document.getElementById('pId').value;
   if (!name || !price || !cat) { showToast('Nombre, precio y categoría son obligatorios'); return; }
+
   if (editId) {
     const p = products.find(x => x.id === editId);
     if (p) { p.name = name; p.price = price; p.category = cat; p.image = img; p.description = desc; p.badge = badge; }
   } else {
     products.push({ id: 'p' + Date.now(), name, price, category: cat, image: img, description: desc, badge });
   }
+
   saveProducts();
   renderProducts();
   renderAdminProducts();
   updateStats();
   clearProductForm();
-  showToast('Producto guardado ✓', 'success');
+  showToast('Guardando producto...');
+  try {
+    await syncToSheets('products');
+    showToast('Producto guardado y sincronizado ✓', 'success');
+  } catch (e) {
+    showToast('Producto guardado localmente, pero falló la sincronización.');
+  }
 }
 
 function editProduct(id) {
@@ -1653,14 +1742,20 @@ function editProduct(id) {
   document.querySelector('#adminProducts').scrollTop = 0;
 }
 
-function deleteProduct(id) {
+async function deleteProduct(id) {
   if (!confirm('¿Eliminar este producto?')) return;
   products = products.filter(p => p.id !== id);
   saveProducts();
   renderProducts();
   renderAdminProducts();
   updateStats();
-  showToast('Producto eliminado');
+  showToast('Eliminando producto...');
+  try {
+    await syncToSheets('products');
+    showToast('Producto eliminado y sincronizado ✓', 'success');
+  } catch (e) {
+    showToast('Producto eliminado localmente, pero falló la sincronización.');
+  }
 }
 
 function clearProductForm() {
@@ -1693,17 +1788,19 @@ function renderAdminCategories() {
   }).join('');
 }
 
-function saveCategory() {
+async function saveCategory() {
   const name = document.getElementById('catName').value.trim();
   const emoji = document.getElementById('catEmoji').value.trim() || '💜';
   const editId = document.getElementById('catId').value;
   if (!name) { showToast('El nombre es obligatorio'); return; }
+
   if (editId) {
     const c = categories.find(x => x.id === editId);
     if (c) { c.name = name; c.emoji = emoji; }
   } else {
     categories.push({ id: 'c' + Date.now(), name, emoji });
   }
+
   saveCategories();
   renderCategories();
   renderAdminCategories();
@@ -1712,7 +1809,13 @@ function saveCategory() {
   document.getElementById('catEmoji').value = '';
   document.getElementById('catId').value = '';
   updateStats();
-  showToast('Categoría guardada ✓', 'success');
+  showToast('Guardando categoría...');
+  try {
+    await syncToSheets('categories');
+    showToast('Categoría guardada y sincronizada ✓', 'success');
+  } catch (e) {
+    showToast('Categoría guardada localmente, pero falló la sincronización.');
+  }
 }
 
 function editCategory(id) {
@@ -1723,14 +1826,20 @@ function editCategory(id) {
   document.getElementById('catId').value = c.id;
 }
 
-function deleteCategory(id) {
+async function deleteCategory(id) {
   if (!confirm('¿Eliminar esta categoría? Los productos quedarán sin categoría.')) return;
   categories = categories.filter(c => c.id !== id);
   saveCategories();
   renderCategories();
   renderAdminCategories();
   updateStats();
-  showToast('Categoría eliminada');
+  showToast('Eliminando categoría...');
+  try {
+    await syncToSheets('categories');
+    showToast('Categoría eliminada y sincronizada ✓', 'success');
+  } catch (e) {
+    showToast('Categoría eliminada localmente, pero falló la sincronización.');
+  }
 }
 
 // Admin - Config
@@ -1740,25 +1849,52 @@ function fillAdminConfig() {
   document.getElementById('cfgHero').value = config.hero || '';
 }
 
-function saveConfig() {
+async function saveConfig() {
   config.whatsapp = document.getElementById('cfgWhatsapp').value;
   config.name = document.getElementById('cfgName').value;
   config.hero = document.getElementById('cfgHero').value;
   const newPass = document.getElementById('cfgPass').value;
   const newPass2 = document.getElementById('cfgPass2').value;
+
   if (newPass) {
     if (newPass !== newPass2) { showToast('Las contraseñas no coinciden'); return; }
     config.pass = newPass;
   }
+
+  // Save to localStorage immediately
   localStorage.setItem('bl_config', JSON.stringify(config));
-  showToast('Configuración guardada ✓', 'success');
+  showToast('Guardando configuración...');
+
+  try {
+    const url = config.scriptUrl;
+    if (!url) { showToast('Configuración guardada localmente. Agrega la URL del script para guardado permanente.'); return; }
+    await fetch(url, { method: 'POST', body: JSON.stringify({ action: 'saveConfig', config: config }), headers: { 'Content-Type': 'application/json' }, redirect: 'follow' });
+    showToast('Configuración guardada y sincronizada ✓', 'success');
+  } catch (e) {
+    console.error("Error al guardar config:", e);
+    showToast('Configuración guardada localmente, pero falló la sincronización.');
+  }
 }
 
 // Admin - Sheets
-function saveScriptUrl() {
-  config.scriptUrl = document.getElementById('cfgScriptUrl').value;
+async function saveScriptUrl() {
+  const newUrl = document.getElementById('cfgScriptUrl').value.trim();
+  config.scriptUrl = newUrl;
   localStorage.setItem('bl_config', JSON.stringify(config));
-  showToast('URL guardada ✓', 'success');
+  
+  if (!newUrl) {
+    showToast('URL eliminada del almacenamiento local.');
+    return;
+  }
+
+  showToast('Guardando URL y sincronizando...');
+  try {
+    await fetch(newUrl, { method: 'POST', body: JSON.stringify({ action: 'saveConfig', config: config }), headers: { 'Content-Type': 'application/json' }, redirect: 'follow' });
+    showToast('URL guardada y sincronizada ✓', 'success');
+  } catch (e) {
+    console.error("Error al guardar la URL del script:", e);
+    showToast('URL guardada localmente, pero no se pudo sincronizar. Verifica que la URL sea correcta.');
+  }
 }
 
 async function exportToSheets() {
@@ -1766,24 +1902,66 @@ async function exportToSheets() {
   if (!url) { showToast('Primero configura la URL del script'); return; }
   showToast('Exportando...');
   try {
-    await fetch(`${url}?action=saveCategories&data=${encodeURIComponent(JSON.stringify(categories))}`);
-    await fetch(`${url}?action=saveProducts&data=${encodeURIComponent(JSON.stringify(products))}`);
+    await Promise.all([
+      fetch(url, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'saveCategories', categories: categories }),
+        headers: { 'Content-Type': 'application/json' },
+        redirect: 'follow'
+      }),
+      fetch(url, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'saveProducts', products: products }),
+        headers: { 'Content-Type': 'application/json' },
+        redirect: 'follow'
+      }),
+      fetch(url, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'saveConfig', config: config }),
+        headers: { 'Content-Type': 'application/json' },
+        redirect: 'follow'
+      })
+    ]);
     showToast('¡Exportado a Sheets! ✓', 'success');
-  } catch(e) { showToast('Error al exportar'); }
+  } catch(e) {
+    console.error(e);
+    showToast('Error al exportar');
+  }
 }
 
-async function syncFromSheets() {
+async function syncFromSheets(isInitialLoad = false) {
   const url = config.scriptUrl;
-  if (!url) { showToast('Primero configura la URL del script'); return; }
-  showToast('Sincronizando...');
+  if (!url) {
+    if (!isInitialLoad) showToast('Primero configura la URL del script');
+    return;
+  }
+  if (!isInitialLoad) showToast('Sincronizando...');
+  else console.log('Sincronización inicial desde Google Sheets...');
+
   try {
-    const rC = await fetch(`${url}?action=getCategories`).then(r => r.json());
-    const rP = await fetch(`${url}?action=getProducts`).then(r => r.json());
-    if (rC.success && rC.data.length) { categories = rC.data; saveCategories(); }
-    if (rP.success && rP.data.length) { products = rP.data; saveProducts(); }
-    renderCategories(); renderProducts(); renderAdminProducts(); renderAdminCategories();
-    showToast('¡Sincronizado! ✓', 'success');
-  } catch(e) { showToast('Error de conexión'); }
+    const [resCats, resProds, resConfig] = await Promise.all([
+      fetch(`${url}?action=getCategories`).then(r => r.json()),
+      fetch(`${url}?action=getProducts`).then(r => r.json()),
+      fetch(`${url}?action=getConfig`).then(r => r.json())
+    ]);
+
+    if (resCats.success && resCats.data.length) { categories = resCats.data; saveCategories(); }
+    if (resProds.success && resProds.data.length) { products = resProds.data; saveProducts(); }
+    if (resConfig.success && Object.keys(resConfig.data).length) {
+        const scriptUrl = config.scriptUrl;
+        config = resConfig.data;
+        if (scriptUrl && !config.scriptUrl) { config.scriptUrl = scriptUrl; }
+        saveConfig();
+    }
+
+    renderCategories(); renderProducts(); updateStats();
+    if (!isInitialLoad) { renderAdminProducts(); renderAdminCategories(); fillAdminConfig(); showToast('¡Sincronizado! ✓', 'success'); }
+    else console.log('Sincronización inicial completada.');
+
+  } catch(e) {
+    console.error("Error de sincronización:", e);
+    if (!isInitialLoad) showToast('Error de conexión');
+  }
 }
 </script>
 </body>
